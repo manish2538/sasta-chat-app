@@ -251,7 +251,7 @@ const Chat: React.FC = () => {
       {!connected ? (
         <div className="connection-form">
           <div className="connection-header">
-            <h2>Sprintmate Chat</h2>
+            <h2>Sasta Chat App</h2>
             <p>Connect to start chatting</p>
           </div>
           
@@ -289,7 +289,7 @@ const Chat: React.FC = () => {
         <>
           <div className="chat-header">
             <div className="chat-header-info">
-              <h3>Sprintmate Chat</h3>
+              <h3>Sasta Chat App</h3>
               {userProfile && (
                 <span className="user-status">Logged in as: {userProfile.name}</span>
               )}
