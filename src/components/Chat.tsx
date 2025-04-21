@@ -20,7 +20,7 @@ interface Message {
   senderId: string;
   senderName: string;
   content: string;
-  type: 'TEXT' | 'EMOJI' | 'GIF' | 'STICKER';
+  type: 'TEXT' | 'EMOJI' | 'GIF';
 }
 
 const Chat: React.FC = () => {
@@ -32,17 +32,33 @@ const Chat: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
-  const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [gifSearchQuery, setGifSearchQuery] = useState('');
+  const [gifOffset, setGifOffset] = useState(0);
   const stompClient = useRef<Client | null>(null);
   const giphy = new GiphyFetch(config.giphyApiKey);
 
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const gifPickerRef = useRef<HTMLDivElement>(null);
 
   // Add click outside handler for emoji picker
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
         setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Add click outside handler for GIF picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target as Node)) {
+        setShowGifPicker(false);
       }
     };
 
@@ -116,7 +132,7 @@ const Chat: React.FC = () => {
     setUserProfile(null);
   };
 
-  const sendMessage = (content: string, type: 'TEXT' | 'EMOJI' | 'GIF' | 'STICKER' = 'TEXT') => {
+  const sendMessage = (content: string, type: 'TEXT' | 'EMOJI' | 'GIF' = 'TEXT') => {
     if (!stompClient.current?.connected) {
       alert("Not connected to WebSocket.");
       return;
@@ -156,129 +172,153 @@ const Chat: React.FC = () => {
     }
   };
 
-  const onGifSelect = (gif: any) => {
-    sendMessage(gif.images.original.url, 'GIF');
-    setShowGifPicker(false);
+  const handleGifButtonClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowGifPicker(!showGifPicker);
   };
 
-  const onStickerSelect = (sticker: any) => {
-    sendMessage(sticker.url, 'STICKER');
-    setShowStickerPicker(false);
+  const onGifSelect = (gif: any) => {
+    console.log('Selected GIF:', gif);
+    if (gif && gif.images && gif.images.original && gif.images.original.url) {
+      const gifUrl = gif.images.original.url;
+      console.log('Sending GIF URL:', gifUrl);
+      sendMessage(gifUrl, 'GIF');
+      setShowGifPicker(false);
+    }
+  };
+
+  const fetchGifs = (offset: number) => {
+    console.log('Fetching GIFs, query:', gifSearchQuery, 'offset:', offset);
+    if (gifSearchQuery) {
+      return giphy.search(gifSearchQuery, { 
+        offset, 
+        limit: 10,
+        rating: 'g',
+        lang: 'en'
+      });
+    }
+    return giphy.trending({ 
+      offset, 
+      limit: 10,
+      rating: 'g'
+    });
+  };
+
+  const handleGifSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    console.log('GIF search query:', query);
+    setGifSearchQuery(query);
+    setGifOffset(0);
   };
 
   return (
-    <div className="container mt-4">
-      <h2>Sprintmate Chat</h2>
-      
-      {userProfile && (
-        <div className="alert alert-info">
-          Logged in as: {userProfile.name} ({userProfile.email})
+    <div className="chat-container">
+      {!connected ? (
+        <div className="connection-form">
+          <div className="connection-header">
+            <h2>Sprintmate Chat</h2>
+            <p>Connect to start chatting</p>
+          </div>
+          
+          <div className="form-group">
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Enter Bearer Token"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Enter Room ID"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+            />
+          </div>
+
+          <div className="form-actions">
+            <button
+              className="connect-button"
+              onClick={connect}
+              disabled={!token || !roomId}
+            >
+              Connect
+            </button>
+          </div>
         </div>
-      )}
-      
-      <div className="form-group">
-        <input
-          type="text"
-          className="form-control"
-          placeholder="Enter Bearer Token"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-        />
-      </div>
-
-      <div className="form-group mt-2">
-        <input
-          type="text"
-          className="form-control"
-          placeholder="Enter Room ID"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-        />
-      </div>
-
-      <div className="form-inline mb-3">
-        <button
-          className="btn btn-success me-2"
-          onClick={connect}
-          disabled={connected || !token || !roomId}
-        >
-          Connect
-        </button>
-        <button
-          className="btn btn-danger"
-          onClick={disconnect}
-          disabled={!connected}
-        >
-          Disconnect
-        </button>
-      </div>
-
-      {connected && (
+      ) : (
         <>
-          <div className="chat-messages mb-3" style={{ height: '400px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px' }}>
+          <div className="chat-header">
+            <div className="chat-header-info">
+              <h3>Sprintmate Chat</h3>
+              {userProfile && (
+                <span className="user-status">Logged in as: {userProfile.name}</span>
+              )}
+              <button className="disconnect-button" onClick={disconnect}>
+                Disconnect
+              </button>
+            </div>
+          </div>
+
+          <div className="chat-messages">
             {messages.map((msg, index) => (
-              <div key={index} className="message mb-2">
-                <strong>{msg.senderName}:</strong>
-                {msg.type === 'GIF' ? (
-                  <img src={msg.content} alt="GIF" style={{ maxWidth: '200px' }} />
-                ) : msg.type === 'STICKER' ? (
-                  <img src={msg.content} alt="Sticker" style={{ maxWidth: '100px' }} />
-                ) : (
-                  <span>{msg.content}</span>
-                )}
+              <div 
+                key={index} 
+                className={`message ${msg.senderId === userProfile?.userId ? 'sent' : 'received'}`}
+              >
+                <div className="message-content">
+                  {msg.type === 'GIF' ? (
+                    <img src={msg.content} alt="GIF" className="message-gif" />
+                  ) : (
+                    <span>{msg.content}</span>
+                  )}
+                </div>
+                <div className="message-time">
+                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
             ))}
           </div>
 
-          <div className="input-group position-relative">
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Enter your message"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage(message)}
-            />
-            <button
-              className="btn btn-outline-secondary"
-              type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            >
-              😊
-            </button>
-            <button
-              className="btn btn-outline-secondary"
-              type="button"
-              onClick={() => setShowGifPicker(!showGifPicker)}
-            >
-              GIF
-            </button>
-            <button
-              className="btn btn-outline-secondary"
-              type="button"
-              onClick={() => setShowStickerPicker(!showStickerPicker)}
-            >
-              Stickers
-            </button>
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => sendMessage(message)}
-            >
-              Send
-            </button>
+          <div className="chat-input-container">
+            <div className="chat-input-wrapper">
+              <button 
+                className="emoji-button"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              >
+                <span role="img" aria-label="emoji">😊</span>
+              </button>
+              <input
+                type="text"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage(message)}
+                placeholder="Type a message..."
+                className="chat-input"
+              />
+              <button 
+                className="gif-button"
+                onClick={handleGifButtonClick}
+              >
+                <span role="img" aria-label="gif">🎬</span>
+              </button>
+              <button 
+                className="send-button"
+                onClick={() => sendMessage(message)}
+              >
+                <span role="img" aria-label="send">➤</span>
+              </button>
+            </div>
 
             {showEmojiPicker && (
               <div 
                 ref={emojiPickerRef}
                 className="emoji-picker-container"
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  right: '0',
-                  zIndex: 1000,
-                  marginBottom: '10px'
-                }}
               >
                 <Picker
                   data={data}
@@ -293,32 +333,37 @@ const Chat: React.FC = () => {
                 />
               </div>
             )}
+
+            {showGifPicker && (
+              <div 
+                ref={gifPickerRef}
+                className="gif-picker"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="gif-search">
+                  <input
+                    type="text"
+                    placeholder="Search GIFs..."
+                    value={gifSearchQuery}
+                    onChange={(e) => setGifSearchQuery(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div className="gif-grid">
+                  <Grid
+                    width={380}
+                    columns={3}
+                    fetchGifs={fetchGifs}
+                    onGifClick={onGifSelect}
+                    key={gifSearchQuery}
+                    noLink={true}
+                    hideAttribution={true}
+                    className="giphy-grid"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-
-          {showGifPicker && (
-            <div className="gif-picker" style={{ height: '300px', overflowY: 'auto' }}>
-              <Grid
-                width={400}
-                columns={3}
-                fetchGifs={(offset) => giphy.trending({ offset, limit: 10 })}
-                onGifClick={onGifSelect}
-              />
-            </div>
-          )}
-
-          {showStickerPicker && (
-            <div className="sticker-picker">
-              {config.defaultStickers.map((sticker) => (
-                <img
-                  key={sticker.id}
-                  src={sticker.url}
-                  alt={`Sticker ${sticker.id}`}
-                  onClick={() => onStickerSelect(sticker)}
-                  style={{ width: '50px', cursor: 'pointer', margin: '5px' }}
-                />
-              ))}
-            </div>
-          )}
         </>
       )}
     </div>
