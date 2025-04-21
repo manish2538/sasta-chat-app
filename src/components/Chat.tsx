@@ -110,15 +110,13 @@ const Chat: React.FC = () => {
               console.log('Received message:', msg);
               const body = JSON.parse(msg.body);
               
-              // Only add message if it's not from the current user
-              if (body.senderId !== userProfile?.userId) {
-                setMessages(prev => [...prev, {
-                  senderId: body.senderId,
-                  senderName: body.senderName || "Anonymous",
-                  content: body.content,
-                  type: body.eventType
-                }]);
-              }
+              // Add all received messages to the state
+              setMessages(prev => [...prev, {
+                senderId: body.senderId,
+                senderName: body.senderName || "Anonymous",
+                content: body.content,
+                type: body.eventType
+              }]);
             });
 
             // Send a test message to verify connection
@@ -183,14 +181,6 @@ const Chat: React.FC = () => {
     };
 
     console.log('Sending message:', msg);
-
-    // Add message to local state immediately
-    setMessages(prev => [...prev, {
-      senderId: userProfile?.userId || '',
-      senderName: userProfile?.name || 'You',
-      content,
-      type
-    }]);
 
     try {
       stompClient.current?.publish({
