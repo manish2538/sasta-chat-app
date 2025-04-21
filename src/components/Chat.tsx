@@ -5,6 +5,7 @@ import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { GiphyFetch } from '@giphy/js-fetch-api';
 import { Grid } from '@giphy/react-components';
+import Cookies from 'js-cookie';
 import { config } from '../config';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './Chat.css';
@@ -27,8 +28,8 @@ const Chat: React.FC = () => {
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [message, setMessage] = useState('');
-  const [token, setToken] = useState('');
-  const [roomId, setRoomId] = useState('');
+  const [token, setToken] = useState(Cookies.get('chat_token') || '');
+  const [roomId, setRoomId] = useState(Cookies.get('chat_room_id') || '');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -39,6 +40,13 @@ const Chat: React.FC = () => {
 
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const gifPickerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-connect if we have stored credentials
+  useEffect(() => {
+    if (token && roomId && !connected) {
+      connect();
+    }
+  }, []);
 
   // Add click outside handler for emoji picker
   useEffect(() => {
@@ -84,6 +92,10 @@ const Chat: React.FC = () => {
       const data = await res.json();
       setUserProfile(data);
 
+      // Store credentials in cookies
+      Cookies.set('chat_token', token, { expires: 7 }); // Expires in 7 days
+      Cookies.set('chat_room_id', roomId, { expires: 7 });
+
       const socket = new SockJS(`${config.baseUrl}/chat`);
       stompClient.current = new Client({
         webSocketFactory: () => socket,
@@ -92,28 +104,42 @@ const Chat: React.FC = () => {
           console.log('Connected to WebSocket:', frame);
           setConnected(true);
           
-          // Subscribe to the room
-          stompClient.current?.subscribe(`/topic/room/${roomId}`, (msg) => {
-            console.log('Received message:', msg);
-            const body = JSON.parse(msg.body);
-            setMessages(prev => [...prev, {
-              senderId: body.senderId,
-              senderName: body.senderName || "Anonymous",
-              content: body.content,
-              type: body.eventType
-            }]);
-          });
+          // Subscribe to the room after connection is established
+          if (stompClient.current) {
+            const subscription = stompClient.current.subscribe(`/topic/room/${roomId}`, (msg) => {
+              console.log('Received message:', msg);
+              const body = JSON.parse(msg.body);
+              
+              // Only add message if it's not from the current user
+              if (body.senderId !== userProfile?.userId) {
+                setMessages(prev => [...prev, {
+                  senderId: body.senderId,
+                  senderName: body.senderName || "Anonymous",
+                  content: body.content,
+                  type: body.eventType
+                }]);
+              }
+            });
 
-          // Send a test message to verify connection
-          sendMessage("User joined the chat", "TEXT");
+            // Send a test message to verify connection
+            setTimeout(() => {
+              sendMessage("User joined the chat", "TEXT");
+            }, 1000);
+          }
         },
         onWebSocketError: (err) => {
           console.error("WebSocket Error:", err);
           alert("WebSocket connection error. Please try again.");
+          setConnected(false);
         },
         onStompError: (frame) => {
           console.error("STOMP Error:", frame.headers['message'], frame.body);
           alert("STOMP protocol error. Please try again.");
+          setConnected(false);
+        },
+        onDisconnect: () => {
+          console.log('Disconnected from WebSocket');
+          setConnected(false);
         }
       });
 
@@ -121,6 +147,7 @@ const Chat: React.FC = () => {
     } catch (e) {
       console.error("Connection error:", e);
       alert("Error connecting: " + (e as Error).message);
+      setConnected(false);
     }
   };
 
@@ -130,11 +157,15 @@ const Chat: React.FC = () => {
     }
     setConnected(false);
     setUserProfile(null);
+    // Clear cookies on disconnect
+    Cookies.remove('chat_token');
+    Cookies.remove('chat_room_id');
   };
 
   const sendMessage = (content: string, type: 'TEXT' | 'EMOJI' | 'GIF' = 'TEXT') => {
     if (!stompClient.current?.connected) {
-      alert("Not connected to WebSocket.");
+      console.log('WebSocket not connected, attempting to reconnect...');
+      connect();
       return;
     }
 
@@ -153,11 +184,24 @@ const Chat: React.FC = () => {
 
     console.log('Sending message:', msg);
 
-    stompClient.current.publish({
-      destination: `/app/sendMessage/${roomId}`,
-      body: JSON.stringify(msg),
-      headers: { Authorization: token }
-    });
+    // Add message to local state immediately
+    setMessages(prev => [...prev, {
+      senderId: userProfile?.userId || '',
+      senderName: userProfile?.name || 'You',
+      content,
+      type
+    }]);
+
+    try {
+      stompClient.current?.publish({
+        destination: `/app/sendMessage/${roomId}`,
+        body: JSON.stringify(msg),
+        headers: { Authorization: token }
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message. Please try again.');
+    }
 
     setMessage('');
   };
@@ -271,6 +315,9 @@ const Chat: React.FC = () => {
                 key={index} 
                 className={`message ${msg.senderId === userProfile?.userId ? 'sent' : 'received'}`}
               >
+                <div className="message-sender">
+                  {msg.senderName}
+                </div>
                 <div className="message-content">
                   {msg.type === 'GIF' ? (
                     <img src={msg.content} alt="GIF" className="message-gif" />
