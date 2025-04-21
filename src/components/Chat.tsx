@@ -7,6 +7,7 @@ import { GiphyFetch } from '@giphy/js-fetch-api';
 import { Grid } from '@giphy/react-components';
 import { config } from '../config';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import './Chat.css';
 
 interface UserProfile {
   name: string;
@@ -34,6 +35,22 @@ const Chat: React.FC = () => {
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const stompClient = useRef<Client | null>(null);
   const giphy = new GiphyFetch(config.giphyApiKey);
+
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // Add click outside handler for emoji picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const connect = async () => {
     if (!token.startsWith('Bearer ')) {
@@ -105,6 +122,11 @@ const Chat: React.FC = () => {
       return;
     }
 
+    if (!content) {
+      alert("Message cannot be empty.");
+      return;
+    }
+
     const msg = {
       senderId: userProfile?.userId,
       senderName: userProfile?.name,
@@ -125,8 +147,13 @@ const Chat: React.FC = () => {
   };
 
   const onEmojiSelect = (emoji: any) => {
-    sendMessage(emoji.native, 'EMOJI');
-    setShowEmojiPicker(false);
+    console.log('Selected emoji:', emoji);
+    if (emoji && emoji.native) {
+      const emojiContent = emoji.native;
+      console.log('Sending emoji:', emojiContent);
+      sendMessage(emojiContent, 'EMOJI');
+      setShowEmojiPicker(false);
+    }
   };
 
   const onGifSelect = (gif: any) => {
@@ -203,7 +230,7 @@ const Chat: React.FC = () => {
             ))}
           </div>
 
-          <div className="input-group">
+          <div className="input-group position-relative">
             <input
               type="text"
               className="form-control"
@@ -214,35 +241,59 @@ const Chat: React.FC = () => {
             />
             <button
               className="btn btn-outline-secondary"
+              type="button"
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             >
               😊
             </button>
             <button
               className="btn btn-outline-secondary"
+              type="button"
               onClick={() => setShowGifPicker(!showGifPicker)}
             >
               GIF
             </button>
             <button
               className="btn btn-outline-secondary"
+              type="button"
               onClick={() => setShowStickerPicker(!showStickerPicker)}
             >
               Stickers
             </button>
             <button
               className="btn btn-primary"
+              type="button"
               onClick={() => sendMessage(message)}
             >
               Send
             </button>
-          </div>
 
-          {showEmojiPicker && (
-            <div className="emoji-picker">
-              <Picker data={data} onEmojiSelect={onEmojiSelect} />
-            </div>
-          )}
+            {showEmojiPicker && (
+              <div 
+                ref={emojiPickerRef}
+                className="emoji-picker-container"
+                style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  right: '0',
+                  zIndex: 1000,
+                  marginBottom: '10px'
+                }}
+              >
+                <Picker
+                  data={data}
+                  onEmojiSelect={onEmojiSelect}
+                  theme="light"
+                  previewPosition="none"
+                  searchPosition="none"
+                  skinTonePosition="none"
+                  perLine={8}
+                  emojiSize={24}
+                  emojiButtonSize={28}
+                />
+              </div>
+            )}
+          </div>
 
           {showGifPicker && (
             <div className="gif-picker" style={{ height: '300px', overflowY: 'auto' }}>

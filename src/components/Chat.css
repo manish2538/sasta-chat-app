@@ -1,0 +1,36 @@
+.emoji-picker-container {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.emoji-picker-container em-emoji-picker {
+  --background: white;
+  --border-color: #ddd;
+  --button-active-background: #e9ecef;
+  --button-hover-background: #f8f9fa;
+  --indicator-color: #0d6efd;
+  --input-border-color: #ddd;
+  --input-focus-border-color: #86b7fe;
+  --category-font-color: #6c757d;
+  --indicator-color: #0d6efd;
+}
+
+.chat-messages {
+  background: white;
+  border-radius: 4px;
+  padding: 15px;
+}
+
+.message {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  background: #f8f9fa;
+}
+
+.message strong {
+  color: #0d6efd;
+  margin-right: 8px;
+} 
